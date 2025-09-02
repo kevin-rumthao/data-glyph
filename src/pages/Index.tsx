@@ -1,7 +1,7 @@
-import DataAnnotator from "@/components/DataAnnotator";
+import TIDEApplications from "@/components/TIDEApplications";
 
 const Index = () => {
-  return <DataAnnotator />;
+  return <TIDEApplications />;
 };
 
 export default Index;
