@@ -9,6 +9,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { useToast } from '@/hooks/use-toast';
 import { Sparkles, Upload, Filter, Brain, ArrowLeft, Plus, X, BarChart3, Eye, RefreshCw, Users, LogOut } from 'lucide-react';
 
+// Global type declaration for XLSX library
+declare global {
+  interface Window {
+    XLSX: any;
+  }
+}
+
 // Types for TIDE Application System
 interface ApplicationRow {
   id: string;
@@ -164,13 +171,116 @@ const TIDEApplications = () => {
     return [...new Set(values)].sort();
   }, [applications]);
 
-  // Handle file upload simulation
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  // Generate unique ID for applications
+  const generateApplicationId = async (applicationData: any): Promise<string> => {
+    const dataString = JSON.stringify(applicationData);
+    const encoder = new TextEncoder();
+    const data = encoder.encode(dataString);
+    const hashBuffer = await crypto.subtle.digest('SHA-1', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 12);
+  };
+
+  // Handle file upload for Google Sheets format
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file) {
+    if (!file) return;
+
+    // Load XLSX library dynamically
+    const loadXLSX = () => {
+      return new Promise((resolve, reject) => {
+        if ((window as any).XLSX) {
+          resolve((window as any).XLSX);
+          return;
+        }
+        const script = document.createElement('script');
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+        script.onload = () => resolve((window as any).XLSX);
+        script.onerror = reject;
+        document.head.appendChild(script);
+      });
+    };
+
+    try {
+      const XLSX = await loadXLSX() as any;
+      
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        try {
+          const data = new Uint8Array(e.target?.result as ArrayBuffer);
+          const workbook = XLSX.read(data, { type: 'array' });
+          const sheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[sheetName];
+          const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
+
+          if (jsonData.length > 1) {
+            const headers = jsonData[0] as string[];
+            const rows = jsonData.slice(1) as any[][];
+            
+            // Map Google Sheets columns to ApplicationRow format
+            const newApplications: ApplicationRow[] = await Promise.all(
+              rows.map(async (row, index) => {
+                const application: any = {};
+                
+                headers.forEach((header, colIndex) => {
+                  const normalizedHeader = header.toLowerCase()
+                    .replace(/\s+/g, '_')
+                    .replace(/[^\w_]/g, '');
+                  application[normalizedHeader] = row[colIndex] || '';
+                });
+
+                // Generate required fields if missing
+                const id = await generateApplicationId(application);
+                return {
+                  id: application.id || application.application_code || id,
+                  timestamp: application.timestamp || new Date().toLocaleString(),
+                  application_code: application.application_code || `2025A-TIDEC4-${String(index + 1).padStart(4, '0')}`,
+                  eligibility: (application.eligibility === 'Eligible' || application.eligibility === 'Not Eligible') 
+                    ? application.eligibility 
+                    : 'Not Eligible',
+                  email: application.email || '',
+                  brand_name: application.brand_name || application.company_name || '',
+                  applicant_name: application.applicant_name || application.founder_name || application.name || '',
+                  description: application.description || application.business_description || '',
+                  business_model: application.business_model || '',
+                  target_market: application.target_market || '',
+                  funding_stage: application.funding_stage || '',
+                  team_size: parseInt(application.team_size) || 0
+                } as ApplicationRow;
+              })
+            );
+
+            setApplications(newApplications);
+            dispatch({ type: 'RESET_FILTERS' });
+            
+            toast({
+              title: "Upload Successful",
+              description: `Loaded ${newApplications.length} applications from ${file.name}`
+            });
+          } else {
+            toast({
+              title: "Upload Error",
+              description: "File appears to be empty or invalid format",
+              variant: "destructive"
+            });
+          }
+        } catch (error) {
+          console.error('Error parsing file:', error);
+          toast({
+            title: "Upload Error",
+            description: "Failed to parse the file. Please check the format.",
+            variant: "destructive"
+          });
+        }
+      };
+      
+      reader.readAsArrayBuffer(file);
+    } catch (error) {
+      console.error('Error loading XLSX library:', error);
       toast({
-        title: "File Upload",
-        description: `${file.name} would be processed in a real implementation.`
+        title: "Upload Error",
+        description: "Failed to load file parser. Please try again.",
+        variant: "destructive"
       });
     }
   };
@@ -324,7 +434,7 @@ ${uniqueTargetMarkets.slice(0, 5).map(market =>
                       id="file-upload"
                       type="file"
                       className="hidden"
-                      accept=".xlsx,.csv"
+                      accept=".xlsx,.csv,.xls"
                       onChange={handleFileUpload}
                     />
                   </div>
