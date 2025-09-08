@@ -1,4 +1,4 @@
-import { useState, useMemo, useReducer, useCallback } from 'react';
+import { useState, useMemo, useReducer, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -141,6 +141,7 @@ const TIDEApplications = () => {
   const [isGeneratingInsights, setIsGeneratingInsights] = useState(false);
   const [highlights, setHighlights] = useState<string[]>([]);
   const { toast } = useToast();
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Get headers from applications
   const headers = useMemo(() => {
@@ -424,13 +425,12 @@ ${uniqueTargetMarkets.slice(0, 5).map(market =>
               <CardContent className="pt-6">
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
                   <div className="flex items-center gap-4">
-                    <Label htmlFor="file-upload" className="cursor-pointer">
-                      <Button variant="ai" className="shadow-ai">
-                        <Upload className="mr-2 h-4 w-4" />
-                        Upload Applications
-                      </Button>
-                    </Label>
+                    <Button variant="ai" className="shadow-ai" onClick={() => fileInputRef.current?.click()}>
+                      <Upload className="mr-2 h-4 w-4" />
+                      Upload Applications
+                    </Button>
                     <Input
+                      ref={fileInputRef}
                       id="file-upload"
                       type="file"
                       className="hidden"
